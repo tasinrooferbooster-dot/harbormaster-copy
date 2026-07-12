@@ -178,7 +178,8 @@
     zoneKey: null, zone: null, radius: 5, rng: Math.random,
     events: [], aircraft: [], storm: null,
     feedsTotal: 15, feedsOnline: 15, feedBlipUntil: 0,
-    nextId: 1, tmpl: null,
+    nextId: 1, tmpl: null, lastTickAt: 0,
+    userOff: { x: 0, y: 0 }, // observer offset from zone anchor, miles E/N
   };
 
   function pick(arr) { return arr[Math.floor(S.rng() * arr.length)]; }
@@ -322,6 +323,8 @@
       S.aircraft.push(ac);
     }
     maybeStorm(false);
+    S.lastTickAt = now;
+    S.userOff = { x: 0, y: 0 };
   }
 
   function tick(dtMs) {
@@ -333,7 +336,7 @@
     for (const ac of S.aircraft) {
       ac.x += Math.cos(ac.heading) * ac.speed * dtH;
       ac.y += Math.sin(ac.heading) * ac.speed * dtH;
-      ac.heading += rf(-0.04, 0.04);
+      ac.heading += rf(-0.018, 0.018);
       if (Math.hypot(ac.x, ac.y) > S.radius * 1.45) {
         const fresh = makeAircraft();
         Object.assign(ac, fresh, { id: ac.id });
@@ -369,6 +372,7 @@
     }
     S.events = S.events.filter((e) => e.t > now - 26 * HOUR);
 
+    S.lastTickAt = now;
     return out;
   }
 
@@ -487,7 +491,9 @@
 
   /* ---------- AI briefing (template NLG over live state) ---------- */
 
-  function miles(e) { return Math.hypot(e.x, e.y); }
+  /* Distance from the observer (live GPS position when tracking, else the
+     zone anchor) — so "2.1 mi NE of you" stays true as the user moves. */
+  function miles(e) { return Math.hypot(e.x - S.userOff.x, e.y - S.userOff.y); }
 
   function briefing(now) {
     now = now || Date.now();
@@ -504,8 +510,8 @@
       paras.push(`**Routine picture** in your ${S.radius}-mile zone: ${act.length} minor-to-moderate incident${act.length > 1 ? "s" : ""} active, none requiring action from you.`);
     } else {
       const lead = crit[0];
-      paras.push(`**${crit.length} incident${crit.length > 1 ? "s" : ""} worth your attention** in the ${S.radius}-mile zone. Leading: ${lead.title}, ${miles(lead).toFixed(1)} mi ${bearingName(lead.x, lead.y)} of you (${lead.sources.join(" + ")}).`);
-      if (crit[1]) paras.push(`Also tracking: ${crit[1].title} — ${miles(crit[1]).toFixed(1)} mi ${bearingName(crit[1].x, crit[1].y)}${crit[2] ? `, and ${crit[2].title}` : ""}.`);
+      paras.push(`**${crit.length} incident${crit.length > 1 ? "s" : ""} worth your attention** in the ${S.radius}-mile zone. Leading: ${lead.title}, ${miles(lead).toFixed(1)} mi ${bearingName(lead.x - S.userOff.x, lead.y - S.userOff.y)} of you (${lead.sources.join(" + ")}).`);
+      if (crit[1]) paras.push(`Also tracking: ${crit[1].title} — ${miles(crit[1]).toFixed(1)} mi ${bearingName(crit[1].x - S.userOff.x, crit[1].y - S.userOff.y)}${crit[2] ? `, and ${crit[2].title}` : ""}.`);
     }
 
     // Storm narrative.
@@ -546,6 +552,8 @@
     CATS, CAT_LABEL, CAT_COLOR, SEV_LABEL, ZONES,
     init, tick, activeEvents, windowEvents,
     riskIndex, peopleAffected, predictions, briefing,
+    registerZone(key, cfg) { ZONES[key] = cfg; },
+    setUserOffset(x, y) { S.userOff.x = x; S.userOff.y = y; },
     state: S,
   };
 })();

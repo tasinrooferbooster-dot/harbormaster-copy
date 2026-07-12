@@ -23,7 +23,12 @@ python3 -m http.server 8080   # then open http://localhost:8080/
 ## What's on the dashboard
 
 - **Watch zone selection** — five preset zones (including Port Merrow, where it
-  all began) with a 2–25 mile radius.
+  all began) with a 2–25 mile radius, or **"Use my location"**: a real
+  geolocation fix anchors the zone at your coordinates, `watchPosition`
+  tracks you live (blue GPS dot + accuracy halo, hollow ring for the zone
+  anchor), every distance/bearing is computed from your current position, and
+  a re-center control re-anchors the zone where you are now. Requires a
+  secure context (https or localhost) and location permission.
 - **Live scope map** (`js/map.js`) — canvas-rendered local map (water, street
   grid, highways, airport) with incidents plotted by category (one marker
   *shape* per category as the colorblind-safe second channel), live aircraft,

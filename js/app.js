@@ -22,7 +22,23 @@
     lastBriefingAt: 0,
     lastChartSig: "",
     booted: false,
+    geo: null,             // { anchorLat, anchorLon, lat, lon, off:{x,y}, accMi }
+    geoWatchId: null,
   };
+
+  /* Observer position within the zone: live GPS offset when tracking,
+     otherwise the zone anchor. All distances/bearings key off this. */
+  function userOff() {
+    return (UI.zone === "geo" && UI.geo && UI.geo.off) ? UI.geo.off : { x: 0, y: 0 };
+  }
+  function distMi(ev) {
+    const o = userOff();
+    return Math.hypot(ev.x - o.x, ev.y - o.y);
+  }
+  function bearingOf(ev) {
+    const o = userOff();
+    return bearingName(ev.x - o.x, ev.y - o.y);
+  }
 
   /* ---------- helpers ---------- */
 
@@ -173,7 +189,7 @@
       const resolved = ev.t + ev.ttl <= now;
       meta.appendChild(document.createTextNode(
         `${resolved ? "resolved · " : ""}${timeAgo(ev.t, now)} · ` +
-        `${Math.hypot(ev.x, ev.y).toFixed(1)} mi ${bearingName(ev.x, ev.y)} · ${ev.sources.join(" + ")}`));
+        `${distMi(ev).toFixed(1)} mi ${bearingOf(ev)} · ${ev.sources.join(" + ")}`));
 
       if (!ev.confirmed) {
         const tag = document.createElement("span");
@@ -336,7 +352,7 @@
     for (const ev of evs) {
       if (ev.sev < 3 || !passes(ev)) continue;
       toast(SIM.CAT_COLOR[ev.cat], ev.cat, ev.title,
-        `${SIM.SEV_LABEL[ev.sev]} · ${Math.hypot(ev.x, ev.y).toFixed(1)} mi ${bearingName(ev.x, ev.y)} · ${timeAgo(ev.t, now)}`);
+        `${SIM.SEV_LABEL[ev.sev]} · ${distMi(ev).toFixed(1)} mi ${bearingOf(ev)} · ${timeAgo(ev.t, now)}`);
     }
   }
   function notifyExpired(evs) {
@@ -384,21 +400,111 @@
     }
     const extra = document.createElement("span");
     extra.className = "lg";
-    extra.textContent = "◉ your location · shaded ring = storm cell · outlined patch = outage area · darts = live aircraft";
+    extra.textContent = "◉ your position (live GPS dot when tracking) · shaded ring = storm cell · outlined patch = outage area · darts = live aircraft";
     host.appendChild(extra);
+  }
+
+  /* ---------- geolocation ---------- */
+
+  function fmtCoord(lat, lon) {
+    return Math.abs(lat).toFixed(3) + "°" + (lat >= 0 ? "N" : "S") + " " +
+           Math.abs(lon).toFixed(3) + "°" + (lon >= 0 ? "E" : "W");
+  }
+
+  /* Build a zone config for arbitrary coordinates. Geography and incident
+     flavor are seeded from the coordinates, so your place always looks the
+     same; names stay generic because there's no reverse geocoder on board. */
+  function buildGeoZone(lat, lon) {
+    const seed = Math.abs((Math.round(lat * 1000) * 31 + Math.round(lon * 1000) * 17)) % 100000 + 7;
+    return {
+      name: "Your location", seed,
+      airport: "RGNL", airportBearing: seed % 360,
+      water: ["west", "east", "south", "river"][seed % 4],
+      gridAngle: (seed % 19) - 9,
+      stormChance: 0.45, heat: Math.abs(lat) < 35, quakes: false,
+      rate: { flights: 1, weather: 1, traffic: 1.1, power: 1, internet: 1, emergency: 1 },
+      districts: ["North End", "Riverside", "Midtown", "East Side", "Hillcrest", "Old Town"],
+      highways: ["Beltway", "Route 7", "Hwy 12"],
+      roads: ["Main St", "1st Ave", "Park Rd", "Broadway", "Mill Rd"],
+      isps: ["Comcast", "AT&T", "Spectrum"],
+      creeks: ["Mill Creek", "Stone Creek"],
+    };
+  }
+
+  function geoOffsets(lat, lon) {
+    const g = UI.geo;
+    const x = (lon - g.anchorLon) * 69 * Math.cos((g.anchorLat * Math.PI) / 180);
+    const y = (lat - g.anchorLat) * 69;
+    return { x, y };
+  }
+
+  function onGeoFix(pos) {
+    const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+    const g = UI.geo;
+    if (!g) return;
+    g.lat = lat; g.lon = lon;
+    g.off = geoOffsets(lat, lon);
+    g.accMi = Math.min(2, (accuracy || 80) / 1609);
+    SIM.setUserOffset(g.off.x, g.off.y);
+  }
+
+  function stopGeo() {
+    if (UI.geoWatchId != null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(UI.geoWatchId);
+    }
+    UI.geoWatchId = null;
+    UI.geo = null;
+    SIM.setUserOffset(0, 0);
+  }
+
+  function startGeo() {
+    if (!navigator.geolocation) {
+      toast("var(--s-warning)", "emergency", "Location unavailable",
+        "This browser doesn't expose geolocation. Pick a preset zone instead.");
+      $("zone-select").value = UI.zone;
+      return;
+    }
+    $("map-sub").textContent = "Locating you…";
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        SIM.registerZone("geo", buildGeoZone(lat, lon));
+        UI.geo = { anchorLat: lat, anchorLon: lon, lat, lon, off: { x: 0, y: 0 }, accMi: 0.05 };
+        UI.zone = "geo";
+        onGeoFix(pos);
+        applyZone();
+        UI.geoWatchId = navigator.geolocation.watchPosition(onGeoFix, () => {}, {
+          enableHighAccuracy: true, maximumAge: 2000, timeout: 20000,
+        });
+      },
+      (err) => {
+        const why = err.code === 1
+          ? "Permission denied — allow location access for this site and try again."
+          : err.code === 2 ? "Position unavailable — no GPS/Wi-Fi fix right now."
+          : "Timed out getting a fix — try again.";
+        toast("var(--s-warning)", "emergency", "Couldn't get your location", why);
+        $("zone-select").value = UI.zone;
+        const z = SIM.ZONES[UI.zone];
+        $("map-sub").textContent = `${z.name} · ${UI.radius}-mile watch zone · ${z.airport} region`;
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
+    );
   }
 
   /* ---------- zone lifecycle ---------- */
 
   function applyZone() {
     SIM.init(UI.zone, UI.radius);
+    if (UI.geo && UI.zone === "geo") SIM.setUserOffset(UI.geo.off.x, UI.geo.off.y);
     HMAP.setZone(SIM.ZONES[UI.zone], UI.radius);
     UI.selected = null;
     HMAP.select(null);
     UI.lastChartSig = "";
     const z = SIM.ZONES[UI.zone];
-    $("map-sub").textContent =
-      `${z.name} · ${UI.radius}-mile watch zone · ${z.airport} region`;
+    $("map-sub").textContent = UI.zone === "geo"
+      ? `Your location · ${fmtCoord(UI.geo.anchorLat, UI.geo.anchorLon)} · ${UI.radius}-mile watch zone`
+      : `${z.name} · ${UI.radius}-mile watch zone · ${z.airport} region`;
+    $("recenter-btn").hidden = UI.zone !== "geo";
     refresh(true);
     renderBriefing(Date.now(), true);
   }
@@ -410,7 +516,9 @@
     const act = SIM.activeEvents(now).filter(passes);
     const showAircraft = !UI.cats || UI.cats.has("flights");
     const showStorm = !UI.cats || UI.cats.has("weather");
-    HMAP.setData(act, showAircraft ? SIM.state.aircraft : [], showStorm ? SIM.state.storm : null);
+    const user = (UI.zone === "geo" && UI.geo)
+      ? { x: UI.geo.off.x, y: UI.geo.off.y, accMi: UI.geo.accMi } : null;
+    HMAP.setData(act, showAircraft ? SIM.state.aircraft : [], showStorm ? SIM.state.storm : null, user);
     renderStats(now);
     renderFeed(now);
     renderChart(now, force);
@@ -421,7 +529,21 @@
 
   function initControls() {
     $("zone-select").addEventListener("change", (e) => {
+      if (e.target.value === "geo") {
+        startGeo(); // UI.zone flips to "geo" only once a fix arrives
+        return;
+      }
+      stopGeo();
       UI.zone = e.target.value;
+      applyZone();
+    });
+
+    $("recenter-btn").addEventListener("click", () => {
+      if (!UI.geo) return;
+      UI.geo.anchorLat = UI.geo.lat;
+      UI.geo.anchorLon = UI.geo.lon;
+      UI.geo.off = { x: 0, y: 0 };
+      SIM.registerZone("geo", buildGeoZone(UI.geo.anchorLat, UI.geo.anchorLon));
       applyZone();
     });
     $("radius-select").addEventListener("change", (e) => {
@@ -482,8 +604,15 @@
     applyZone();
     UI.booted = true;
 
-    setInterval(() => { $("clock").textContent = fmtClock(new Date()); }, 1000);
-    $("clock").textContent = fmtClock(new Date());
+    const tickChips = () => {
+      const t = fmtClock(new Date());
+      $("clock").textContent = t;
+      $("map-updated").textContent = UI.zone === "geo" && UI.geo
+        ? `LIVE · ${t} · ${fmtCoord(UI.geo.lat, UI.geo.lon)}`
+        : `LIVE · ${t}`;
+    };
+    setInterval(tickChips, 1000);
+    tickChips();
 
     let last = Date.now();
     setInterval(() => {

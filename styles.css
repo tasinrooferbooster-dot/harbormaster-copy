@@ -33,6 +33,8 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+[hidden] { display: none !important; }
+
 html { color-scheme: dark; }
 
 body {
@@ -47,10 +49,12 @@ body {
 /* Icon strokes — scoped so chart/legend SVG (which uses fill attributes)
    is never repainted by the icon rule. */
 .brand-mark, .ctl-ic, .chip svg, .bell-btn svg, .ghost-btn svg, .ai-ic,
-.evt-ic svg, .toast-ic svg {
+.evt-ic svg, .toast-ic svg, .map-btn svg {
   fill: none; stroke: currentColor; stroke-width: 1.8;
   stroke-linecap: round; stroke-linejoin: round;
 }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -138,9 +142,15 @@ main { max-width: 1460px; margin: 0 auto; padding: 18px 22px 30px; }
   padding: 6px 12px; border-radius: 999px;
   border: 1px solid var(--border); background: var(--surface);
   color: var(--ink-3); font-size: 12.5px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
+.chip:hover { color: var(--ink-2); background: var(--surface-2); }
 .chip svg { width: 13px; height: 13px; color: var(--chipc, currentColor); }
-.chip.on { color: var(--ink); border-color: var(--chipc, var(--ink-3)); background: var(--surface-2); }
+.chip.on {
+  color: var(--ink);
+  border-color: color-mix(in oklab, var(--chipc, var(--ink-3)) 55%, transparent);
+  background: color-mix(in oklab, var(--chipc, var(--ink-3)) 14%, var(--surface));
+}
 .chip[data-cat="flights"]   { --chipc: var(--c-flights); }
 .chip[data-cat="weather"]   { --chipc: var(--c-weather); }
 .chip[data-cat="traffic"]   { --chipc: var(--c-traffic); }
@@ -178,8 +188,17 @@ main { max-width: 1460px; margin: 0 auto; padding: 18px 22px 30px; }
 /* ---------- cards ---------- */
 
 .card {
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--surface-2) 40%, var(--surface)), var(--surface) 60px);
+  border: 1px solid var(--border); border-radius: var(--r);
   padding: 16px; min-width: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 10px 30px -18px rgba(0, 0, 0, 0.6);
+}
+
+.briefing-card { position: relative; overflow: hidden; }
+.briefing-card::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), rgba(57, 135, 229, 0));
+  opacity: 0.7;
 }
 .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .card-head h2 { color: var(--ink); font-size: 12px; font-weight: 700; letter-spacing: 0.2em; }
@@ -200,6 +219,27 @@ main { max-width: 1460px; margin: 0 auto; padding: 18px 22px 30px; }
 .map-wrap { position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
 #map { display: block; width: 100%; height: 460px; cursor: crosshair; }
 #map.hit { cursor: pointer; }
+
+.map-chip {
+  position: absolute; top: 10px; left: 10px; z-index: 20;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 11px; border-radius: 999px;
+  background: rgba(18, 19, 17, 0.62); backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  color: var(--ink-2); font-size: 11px; letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.map-btn {
+  position: absolute; right: 10px; bottom: 10px; z-index: 20;
+  width: 36px; height: 36px; border-radius: 9px;
+  display: grid; place-items: center;
+  background: rgba(18, 19, 17, 0.62); backdrop-filter: blur(8px);
+  border: 1px solid var(--border); color: var(--ink-2);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.map-btn:hover { color: var(--accent); border-color: color-mix(in oklab, var(--accent) 50%, transparent); }
+.map-btn svg { width: 17px; height: 17px; }
 
 .map-tip, .chart-tip {
   position: absolute; z-index: 30; pointer-events: none;
@@ -301,8 +341,11 @@ main { max-width: 1460px; margin: 0 auto; padding: 18px 22px 30px; }
 .evt[data-cat="emergency"] { --evc: var(--c-emergency); }
 
 .evt-ic {
-  width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center;
-  background: color-mix(in oklab, var(--evc) 16%, var(--surface));
+  width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+  background: linear-gradient(145deg,
+    color-mix(in oklab, var(--evc) 24%, var(--surface)),
+    color-mix(in oklab, var(--evc) 9%, var(--surface)));
+  border: 1px solid color-mix(in oklab, var(--evc) 30%, transparent);
   color: var(--evc);
 }
 .evt-ic svg { width: 16px; height: 16px; }
@@ -343,8 +386,9 @@ main { max-width: 1460px; margin: 0 auto; padding: 18px 22px 30px; }
 }
 .toast {
   display: grid; grid-template-columns: 30px 1fr; gap: 9px; align-items: start;
-  background: #242423; border: 1px solid var(--border); border-left: 3px solid var(--tc, var(--accent));
-  border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.55);
+  background: rgba(34, 34, 33, 0.88); backdrop-filter: blur(10px);
+  border: 1px solid var(--border); border-left: 3px solid var(--tc, var(--accent));
+  border-radius: 9px; padding: 10px 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.55);
   animation: toastIn 0.3s ease;
 }
 @keyframes toastIn { from { opacity: 0; transform: translateX(14px); } }

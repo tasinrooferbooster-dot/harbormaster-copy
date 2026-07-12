@@ -26,10 +26,18 @@
     canvas: null, ctx: null, wrap: null, tip: null,
     w: 0, h: 0, dpr: 1,
     zone: null, radius: 5, geo: null,
-    data: { events: [], aircraft: [], storm: null },
+    data: { events: [], aircraft: [], storm: null, user: null },
     hover: null, selected: null, onSelect: null,
     raf: 0,
   };
+
+  /* Aircraft positions integrate on the 2 s sim tick; extrapolate along the
+     current heading between ticks so motion reads continuous, not stepped. */
+  function acDrawPos(ac) {
+    const dtH = Math.min(3000, Date.now() - (SIM.state.lastTickAt || Date.now())) / 3600000;
+    return [ac.x + Math.cos(ac.heading) * ac.speed * dtH,
+            ac.y + Math.sin(ac.heading) * ac.speed * dtH];
+  }
 
   /* ---------- geography ---------- */
 
@@ -95,6 +103,9 @@
     ctx.beginPath();
     const amp = Math.min(M.w, M.h) * 0.045;
 
+    ctx.shadowColor = "rgba(80, 140, 205, 0.35)";
+    ctx.shadowBlur = 10;
+
     if (side === "river") {
       const yMid = M.h * 0.58;
       ctx.moveTo(0, yMid + Math.sin(0) * amp);
@@ -110,6 +121,7 @@
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+      ctx.shadowBlur = 0;
       return;
     }
 
@@ -139,6 +151,7 @@
     }
     ctx.fill();
     ctx.stroke();
+    ctx.shadowBlur = 0;
   }
 
   function drawStreets(ctx) {
@@ -198,18 +211,66 @@
 
   function drawRings(ctx) {
     const s = scale();
-    ctx.strokeStyle = RING;
-    ctx.lineWidth = 1;
+    const R = M.radius * s;
+    // Soft interior lift so the watched zone reads as "the stage".
+    const g = ctx.createRadialGradient(M.w / 2, M.h / 2, R * 0.2, M.w / 2, M.h / 2, R);
+    g.addColorStop(0, "rgba(255,255,255,0.030)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(M.w / 2, M.h / 2, R, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.fillStyle = INK3;
     ctx.font = "10px system-ui, sans-serif";
     ctx.textAlign = "left";
     for (const f of [0.5, 1]) {
       const r = M.radius * f * s;
+      ctx.strokeStyle = f === 1 ? "#45443f" : RING;
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.arc(M.w / 2, M.h / 2, r, 0, Math.PI * 2);
       ctx.stroke();
       ctx.fillText((M.radius * f) + " mi", M.w / 2 + r * 0.7071 + 5, M.h / 2 - r * 0.7071 - 4);
     }
+    // Cardinal ticks on the outer ring.
+    ctx.strokeStyle = "#45443f";
+    ctx.lineWidth = 1.5;
+    for (let k = 0; k < 4; k++) {
+      const a = (k * Math.PI) / 2;
+      ctx.beginPath();
+      ctx.moveTo(M.w / 2 + Math.cos(a) * (R - 4), M.h / 2 + Math.sin(a) * (R - 4));
+      ctx.lineTo(M.w / 2 + Math.cos(a) * (R + 4), M.h / 2 + Math.sin(a) * (R + 4));
+      ctx.stroke();
+    }
+  }
+
+  /* Slow radar sweep clipped to the watch circle — the "someone is watching
+     right now" signal, kept faint enough to never fight the data. */
+  function drawSweep(ctx, t) {
+    if (!ctx.createConicGradient) return;
+    const s = scale();
+    const R = M.radius * s;
+    const a = ((t / 14000) * Math.PI * 2) % (Math.PI * 2);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(M.w / 2, M.h / 2, R, 0, Math.PI * 2);
+    ctx.clip();
+    const g = ctx.createConicGradient(a, M.w / 2, M.h / 2);
+    g.addColorStop(0, "rgba(57,135,229,0.10)");
+    g.addColorStop(0.10, "rgba(57,135,229,0.028)");
+    g.addColorStop(0.22, "rgba(57,135,229,0)");
+    g.addColorStop(1, "rgba(57,135,229,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(M.w / 2 - R, M.h / 2 - R, R * 2, R * 2);
+    // Leading edge.
+    ctx.strokeStyle = "rgba(57,135,229,0.22)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(M.w / 2, M.h / 2);
+    ctx.lineTo(M.w / 2 + Math.cos(a) * R, M.h / 2 + Math.sin(a) * R);
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawAirport(ctx) {
@@ -324,10 +385,22 @@
   }
 
   function drawEvents(ctx, t) {
+    const now = Date.now();
     for (const ev of M.data.events) {
       const [X, Y] = px(ev.x, ev.y);
       const r = ev.sev >= 3 ? 7 : 5.5;
       const color = SIM.CAT_COLOR[ev.cat];
+
+      // Arrival ripple: newly spawned contacts announce themselves.
+      const age = now - ev.t;
+      if (age < 6000) {
+        const ph = (age % 2000) / 2000;
+        ctx.beginPath();
+        ctx.arc(X, Y, r + 3 + ph * 22, 0, Math.PI * 2);
+        ctx.strokeStyle = color + Math.round((1 - ph) * 130).toString(16).padStart(2, "0");
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
 
       if (ev.sev === 4) { // critical pulse
         const ph = (t % 1600) / 1600;
@@ -338,13 +411,16 @@
         ctx.stroke();
       }
 
-      // 2px surface ring, then the colored mark.
+      // 2px surface ring, then the colored mark with a soft signal glow.
       tracePath(ctx, ev.cat, X, Y, r + 2);
       ctx.fillStyle = BG;
       ctx.fill();
+      ctx.shadowColor = color;
+      ctx.shadowBlur = ev.sev >= 3 ? 11 : 7;
       tracePath(ctx, ev.cat, X, Y, r);
       ctx.fillStyle = color;
       ctx.fill();
+      ctx.shadowBlur = 0;
 
       const isFocus = (M.hover && M.hover.type === "event" && M.hover.ev === ev) ||
         (M.selected && M.selected === ev.id);
@@ -360,14 +436,18 @@
 
   function drawAircraft(ctx) {
     for (const ac of M.data.aircraft) {
-      const [X, Y] = px(ac.x, ac.y);
+      const [ax, ay] = acDrawPos(ac);
+      const [X, Y] = px(ax, ay);
       if (X < -20 || X > M.w + 20 || Y < -20 || Y > M.h + 20) continue;
       const a = -ac.heading; // canvas y is flipped
-      // Trail.
-      ctx.strokeStyle = "rgba(57,135,229,0.35)";
+      // Fading trail, brightest at the aircraft.
+      const tg = ctx.createLinearGradient(X - Math.cos(a) * 34, Y - Math.sin(a) * 34, X, Y);
+      tg.addColorStop(0, "rgba(57,135,229,0)");
+      tg.addColorStop(1, "rgba(57,135,229,0.55)");
+      ctx.strokeStyle = tg;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(X - Math.cos(a) * 16, Y - Math.sin(a) * 16);
+      ctx.moveTo(X - Math.cos(a) * 34, Y - Math.sin(a) * 34);
       ctx.lineTo(X, Y);
       ctx.stroke();
       // Dart with surface ring.
@@ -392,7 +472,33 @@
     }
   }
 
-  function drawCenter(ctx) {
+  function drawCenter(ctx, t) {
+    const u = M.data.user;
+    if (u) {
+      // Zone anchor: quiet hollow ring at the origin.
+      const [AX, AY] = px(0, 0);
+      ctx.beginPath(); ctx.arc(AX, AY, 5, 0, Math.PI * 2);
+      ctx.strokeStyle = INK3; ctx.lineWidth = 1.5; ctx.stroke();
+
+      // Live GPS position: accuracy halo + breathing blue dot.
+      const [X, Y] = px(u.x, u.y);
+      const s = scale();
+      const accR = Math.max(10, (u.accMi || 0.05) * s);
+      ctx.beginPath(); ctx.arc(X, Y, accR, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(57,135,229,0.10)"; ctx.fill();
+      ctx.strokeStyle = "rgba(57,135,229,0.30)"; ctx.lineWidth = 1; ctx.stroke();
+
+      const ph = (t % 2400) / 2400;
+      ctx.beginPath(); ctx.arc(X, Y, 8 + ph * 10, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(57,135,229," + (0.4 * (1 - ph)).toFixed(3) + ")";
+      ctx.lineWidth = 1.5; ctx.stroke();
+
+      ctx.beginPath(); ctx.arc(X, Y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff"; ctx.fill();
+      ctx.beginPath(); ctx.arc(X, Y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = "#3987e5"; ctx.fill();
+      return;
+    }
     const [X, Y] = px(0, 0);
     ctx.beginPath(); ctx.arc(X, Y, 6.5, 0, Math.PI * 2);
     ctx.fillStyle = BG; ctx.fill();
@@ -400,6 +506,16 @@
     ctx.fillStyle = INK; ctx.fill();
     ctx.beginPath(); ctx.arc(X, Y, 2, 0, Math.PI * 2);
     ctx.fillStyle = BG; ctx.fill();
+  }
+
+  function drawVignette(ctx) {
+    const g = ctx.createRadialGradient(
+      M.w / 2, M.h / 2, Math.min(M.w, M.h) * 0.38,
+      M.w / 2, M.h / 2, Math.max(M.w, M.h) * 0.72);
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(1, "rgba(0,0,0,0.32)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, M.w, M.h);
   }
 
   function drawChrome(ctx) {
@@ -431,11 +547,13 @@
     drawHighways(ctx);
     drawAirport(ctx);
     drawRings(ctx);
+    drawSweep(ctx, t);
     drawOutageAreas(ctx);
     drawStorm(ctx, t);
     drawEvents(ctx, t);
     drawAircraft(ctx);
-    drawCenter(ctx);
+    drawCenter(ctx, t);
+    drawVignette(ctx);
     drawChrome(ctx);
   }
 
@@ -454,7 +572,8 @@
       if (d < bd) { bd = d; best = { type: "event", ev }; }
     }
     for (const ac of M.data.aircraft) {
-      const [X, Y] = px(ac.x, ac.y);
+      const [ax, ay] = acDrawPos(ac);
+      const [X, Y] = px(ax, ay);
       const d = Math.hypot(mx - X, my - Y);
       if (d < bd) { bd = d; best = { type: "aircraft", ac }; }
     }
@@ -561,10 +680,11 @@
       M.selected = null;
       buildGeo();
     },
-    setData(events, aircraft, storm) {
+    setData(events, aircraft, storm, user) {
       M.data.events = events;
       M.data.aircraft = aircraft;
       M.data.storm = storm;
+      M.data.user = user || null;
     },
     select(id) { M.selected = id; },
   };
