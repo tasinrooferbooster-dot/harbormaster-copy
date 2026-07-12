@@ -14,7 +14,7 @@
   };
 
   const UI = {
-    zone: "austin", radius: 5,
+    zone: "bandar", radius: 5,
     windowKey: "live",
     cats: null,            // null = all, else Set of category keys
     bell: true,
@@ -503,7 +503,7 @@
     const z = SIM.ZONES[UI.zone];
     $("map-sub").textContent = UI.zone === "geo"
       ? `Your location · ${fmtCoord(UI.geo.anchorLat, UI.geo.anchorLon)} · ${UI.radius}-mile watch zone`
-      : `${z.name} · ${UI.radius}-mile watch zone · ${z.airport} region`;
+      : `${z.name}${z.anchor ? " · " + fmtCoord(z.anchor.lat, z.anchor.lon) : ""} · ${UI.radius}-mile watch zone · ${z.airport} region`;
     $("recenter-btn").hidden = UI.zone !== "geo";
     refresh(true);
     renderBriefing(Date.now(), true);

@@ -39,6 +39,18 @@
   /* ---------- zone catalogue ---------- */
 
   const ZONES = {
+    bandar: {
+      name: "Bandar, Narayanganj", seed: 880, airport: "DAC", airportBearing: 305,
+      water: "west", gridAngle: 6, stormChance: 0.55, heat: true, quakes: false,
+      anchor: { lat: 23.610, lon: 90.520 }, // Rupali Abasik Elaka
+      rate: { flights: 0.7, weather: 1.4, traffic: 1.3, power: 1.4, internet: 1.1, emergency: 1.0 },
+      districts: ["Rupali Abasik", "Nabiganj", "Madanganj", "Kadam Rasul", "Sonakanda", "Bandar Bazar"],
+      highways: ["N1 Dhk–Ctg Hwy", "Bandar Rd", "Madanganj Rd"],
+      roads: ["Nabiganj Rd", "Sonakanda Rd", "College Rd", "Ferry Ghat Rd", "Rupali Rd"],
+      isps: ["Link3", "Carnival", "BTCL"],
+      carriers: ["Grameenphone", "Robi", "Banglalink"],
+      creeks: ["Shitalakshya bank", "Kanchpur khal"],
+    },
     seattle: {
       name: "Seattle, WA", seed: 11, airport: "SEA", airportBearing: 195,
       water: "west", gridAngle: 4, stormChance: 0.3, heat: false, quakes: true,
@@ -131,7 +143,7 @@
         { w: 2.4, sev: [2, 3], ttl: [30, 150], people: [500, 2600], src: ["User reports", "ISP status"], t: () => [`${pick(z.isps)} outage reports spiking — ${ri(40, 260)}/15 min`, `Report velocity ${ri(4, 9)}× baseline for the area; ISP has not yet acknowledged.`] },
         { w: 1, sev: [3, 3], ttl: [90, 300], people: [1200, 4000], src: ["RIPE probes", "ISP status"], t: () => [`Fiber cut suspected — ${pick(z.districts)}`, `Active probes losing paths through one aggregation point; splice crew likely needed.`] },
         { w: 1, sev: [2, 2], ttl: [20, 80], people: [300, 1200], src: ["BGP monitors"], t: () => [`BGP route withdrawal — ${pick(z.isps)}`, `Prefixes covering part of the zone withdrawn and re-announced; watching for flap.`] },
-        { w: 1.6, sev: [1, 2], ttl: [30, 120], people: [150, 700], src: ["User reports"], t: () => [`Cell service degraded — ${pick(["AT&T", "Verizon", "T-Mobile"])} LTE`, `Slow data and failed calls clustering near ${pick(z.districts)}.`] },
+        { w: 1.6, sev: [1, 2], ttl: [30, 120], people: [150, 700], src: ["User reports"], t: () => [`Cell service degraded — ${pick(z.carriers || ["AT&T", "Verizon", "T-Mobile"])} LTE`, `Slow data and failed calls clustering near ${pick(z.districts)}.`] },
         { w: 0.8, sev: [1, 1], ttl: [20, 60], people: [100, 400], src: ["RIPE probes"], t: () => [`DNS latency elevated — regional`, `Resolution times ${ri(2, 5)}× normal on one resolver cluster; most users unaffected.`] },
       ],
       emergency: [
