@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Harbormaster — AI-powered local monitoring. Flights, severe weather, internet outages, power failures, traffic and emergency alerts in your watch zone.">
+<title>Harbormaster — AI Local Watch</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233987e5' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='5' r='3'/%3E%3Cpath d='M12 22V8'/%3E%3Cpath d='M5 12H2a10 10 0 0 0 20 0h-3'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<!-- ============ icon sprite ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-anchor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><path d="M12 22V8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></symbol>
+    <symbol id="i-flights" viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></symbol>
+    <symbol id="i-weather" viewBox="0 0 24 24"><path d="M6 16.3A4.5 4.5 0 0 1 7 7.5a6 6 0 0 1 11.3 1.9A4 4 0 0 1 18 17"/><path d="m13 11-3 5h4l-3 5"/></symbol>
+    <symbol id="i-traffic" viewBox="0 0 24 24"><path d="M19 17h2v-4l-2.2-4.4A2 2 0 0 0 17 7.5H7a2 2 0 0 0-1.8 1.1L3 13v4h2"/><circle cx="7.5" cy="17" r="1.8"/><circle cx="16.5" cy="17" r="1.8"/><path d="M9.3 17h5.4"/><path d="M3.6 13h16.8"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></symbol>
+    <symbol id="i-internet" viewBox="0 0 24 24"><path d="M2 9.2a15.5 15.5 0 0 1 20 0"/><path d="M5 12.5a11 11 0 0 1 14 0"/><path d="M8.5 15.8a6 6 0 0 1 7 0"/><path d="M12 19.5h.01"/></symbol>
+    <symbol id="i-emergency" viewBox="0 0 24 24"><path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z"/><path d="m18.7 15.5.8 2.3 2.3.8-2.3.8-.8 2.3-.8-2.3-2.3-.8 2.3-.8Z"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 5.5-8 12-8 12s-8-6.5-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.8"/></symbol>
+    <symbol id="i-table" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 10h18"/><path d="M9.7 10v9"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></symbol>
+  </defs>
+</svg>
+
+<!-- ============ header ============ -->
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand-mark"><use href="#i-anchor"/></svg>
+    <div class="brand-text">
+      <span class="brand-name">HARBORMASTER</span>
+      <span class="brand-tag">EST. 1911 · NOW WATCHING EVERYTHING ASHORE</span>
+    </div>
+  </div>
+  <div class="zone-controls">
+    <label class="ctl">
+      <svg class="ctl-ic"><use href="#i-pin"/></svg>
+      <select id="zone-select" aria-label="Watch zone">
+        <option value="seattle">Seattle, WA</option>
+        <option value="austin" selected>Austin, TX</option>
+        <option value="chicago">Chicago, IL</option>
+        <option value="miami">Miami, FL</option>
+        <option value="merrow">Port Merrow (legacy)</option>
+      </select>
+    </label>
+    <label class="ctl">
+      <span class="ctl-txt">Radius</span>
+      <select id="radius-select" aria-label="Watch radius">
+        <option value="2">2 mi</option>
+        <option value="5" selected>5 mi</option>
+        <option value="10">10 mi</option>
+        <option value="25">25 mi</option>
+      </select>
+    </label>
+    <div class="watch-state">
+      <span class="live-dot" aria-hidden="true"></span>
+      <span class="live-label">LIVE</span>
+      <span class="clock" id="clock">--:--:--</span>
+    </div>
+    <button class="bell-btn" id="bell-btn" aria-pressed="true" title="Notifications on">
+      <svg><use href="#i-bell"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <!-- ============ filter row ============ -->
+  <div class="filter-row" role="toolbar" aria-label="Scope filters">
+    <div class="seg" id="window-seg" role="group" aria-label="Time window">
+      <button data-window="live" class="on">Live</button>
+      <button data-window="3h">3 h</button>
+      <button data-window="12h">12 h</button>
+      <button data-window="24h">24 h</button>
+    </div>
+    <div class="chips" id="cat-chips" role="group" aria-label="Categories">
+      <button class="chip on" data-cat="all">All</button>
+      <button class="chip" data-cat="flights"><svg><use href="#i-flights"/></svg>Flights</button>
+      <button class="chip" data-cat="weather"><svg><use href="#i-weather"/></svg>Weather</button>
+      <button class="chip" data-cat="traffic"><svg><use href="#i-traffic"/></svg>Traffic</button>
+      <button class="chip" data-cat="power"><svg><use href="#i-power"/></svg>Power</button>
+      <button class="chip" data-cat="internet"><svg><use href="#i-internet"/></svg>Internet</button>
+      <button class="chip" data-cat="emergency"><svg><use href="#i-emergency"/></svg>Emergency</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="col-main">
+
+      <!-- ============ stat tiles ============ -->
+      <div class="stats">
+        <div class="tile">
+          <span class="tile-label">Active incidents</span>
+          <span class="tile-value hero" id="stat-active">0</span>
+          <span class="tile-delta" id="stat-active-delta"></span>
+        </div>
+        <div class="tile">
+          <span class="tile-label">People affected (est.)</span>
+          <span class="tile-value" id="stat-people">0</span>
+          <span class="tile-delta muted" id="stat-people-note">across active incidents</span>
+        </div>
+        <div class="tile">
+          <span class="tile-label">Zone risk index</span>
+          <span class="tile-value" id="stat-risk">0</span>
+          <div class="meter" aria-hidden="true"><div class="meter-fill" id="risk-meter"></div></div>
+          <span class="tile-delta muted" id="stat-risk-note">calm</span>
+        </div>
+        <div class="tile">
+          <span class="tile-label">Data feeds online</span>
+          <span class="tile-value" id="stat-feeds">15/15</span>
+          <span class="tile-delta muted" id="stat-feeds-note">all sources reporting</span>
+        </div>
+      </div>
+
+      <!-- ============ live map ============ -->
+      <section class="card map-card" aria-label="Live scope map">
+        <div class="card-head">
+          <div>
+            <h2>LIVE SCOPE</h2>
+            <span class="card-sub" id="map-sub">—</span>
+          </div>
+          <span class="card-note">hover a contact for detail · click to pin it in the feed</span>
+        </div>
+        <div class="map-wrap">
+          <canvas id="map"></canvas>
+          <div class="map-tip" id="map-tip" hidden></div>
+        </div>
+        <div class="map-legend" id="map-legend"></div>
+      </section>
+
+      <!-- ============ activity chart ============ -->
+      <section class="card chart-card" aria-label="Incident activity">
+        <div class="card-head">
+          <div>
+            <h2>ACTIVITY</h2>
+            <span class="card-sub" id="chart-sub">incidents per hour · last 24 h</span>
+          </div>
+          <button class="ghost-btn" id="table-toggle" aria-pressed="false">
+            <svg><use href="#i-table"/></svg><span>Table</span>
+          </button>
+        </div>
+        <div class="chart-legend" id="chart-legend"></div>
+        <div class="chart-body">
+          <div id="chart"></div>
+          <div id="chart-table" hidden></div>
+        </div>
+        <div class="chart-tip" id="chart-tip" hidden></div>
+      </section>
+
+    </div>
+    <div class="col-side">
+
+      <!-- ============ AI briefing ============ -->
+      <section class="card briefing-card" aria-label="AI watch briefing">
+        <div class="card-head">
+          <div class="head-ai">
+            <svg class="ai-ic"><use href="#i-spark"/></svg>
+            <h2>WATCH BRIEFING</h2>
+          </div>
+          <button class="ghost-btn" id="briefing-refresh" title="Regenerate briefing">
+            <svg><use href="#i-refresh"/></svg>
+          </button>
+        </div>
+        <div class="briefing-body" id="briefing-body" aria-live="polite"></div>
+        <div class="briefing-meta">
+          <span id="briefing-time">—</span>
+          <span id="briefing-confidence">—</span>
+        </div>
+      </section>
+
+      <!-- ============ predictive alerts ============ -->
+      <section class="card predict-card" aria-label="Predictive alerts">
+        <div class="card-head">
+          <div>
+            <h2>PREDICTIVE ALERTS</h2>
+            <span class="card-sub">next 6 hours · model + live-feed basis</span>
+          </div>
+        </div>
+        <div class="predict-list" id="predict-list"></div>
+      </section>
+
+      <!-- ============ live feed ============ -->
+      <section class="card feed-card" aria-label="Incident feed">
+        <div class="card-head">
+          <div>
+            <h2>INCIDENT FEED</h2>
+            <span class="card-sub" id="feed-sub">—</span>
+          </div>
+        </div>
+        <div class="feed-list" id="feed-list" aria-live="polite"></div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<footer class="foot">
+  <p class="foot-line"><strong>Simulated preview.</strong> Every incident, aircraft and forecast on this page is generated in-browser by <code>js/sim.js</code> — no live data is fetched. The production design and data-source plan live in <a href="docs/PRODUCT.md">docs/PRODUCT.md</a>.</p>
+  <p class="foot-sources">Production feeds: FAA SWIM · OpenSky/ADS-B · NWS CAP · NEXRAD · RIPE RIS/Atlas · Cloudflare Radar · PowerOutage.us · DOE EAGLE-I · State DOT 511 · Waze CCP · FEMA IPAWS · USGS · NASA FIRMS · AirNow</p>
+</footer>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="js/sim.js"></script>
+<script src="js/map.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
